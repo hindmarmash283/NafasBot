@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+scikit-learn==1.6.1
+google-generativeai
+supabase
+pyarabic
+nltk
