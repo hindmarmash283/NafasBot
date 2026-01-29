@@ -17,27 +17,6 @@ import zipfile
 
 st.set_page_config(page_title="NafasBot AI", page_icon="🤖", layout="wide")
 
-# 🔥🔥🔥 كود كشف الملفات (Debugging) 🔥🔥🔥
-st.warning("🔍 جاري فحص ملفات السيرفر...")
-try:
-    current_files = os.listdir()
-    st.write(f"📂 الملفات التي يراها النظام حالياً: {current_files}")
-    
-    if "svm_model.zip" in current_files:
-        st.success("✅ ملف svm_model.zip موجود!")
-        st.write(f"حجم الملف: {os.path.getsize('svm_model.zip') / (1024*1024):.2f} MB")
-    else:
-        st.error("❌ ملف svm_model.zip مفقود!")
-
-    if "dataset_original.zip" in current_files:
-        st.success("✅ ملف dataset_original.zip موجود!")
-        st.write(f"حجم الملف: {os.path.getsize('dataset_original.zip') / (1024*1024):.2f} MB")
-    else:
-        st.error("❌ ملف dataset_original.zip مفقود!")
-except Exception as e:
-    st.error(f"خطأ في الفحص: {e}")
-# ---------------------------------------------------------
-
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
@@ -142,7 +121,7 @@ def rename_session(conn, session_id, new_title):
     conn.commit()
 
 # ============================================================
-# 3. تحميل NafsBot (مع تأكيد الأسماء)
+# 3. تحميل NafsBot (تم اعتماد أسماء nafas_ الموجودة بالسيرفر) ✅
 # ============================================================
 
 @st.cache_resource
@@ -156,38 +135,39 @@ def load_nafsbot_models():
     def stem_arabic_word(text):
         try:
             text = araby.strip_tashkeel(text)
-            return " ".join([stemmer.stem(w) for w in text.split()])
+            return " ".join([stemmer.stem(word) for word in text.split()])
         except: return text
     
     try:
         svm_model, df_data = None, None
         
-        # تحميل الملفات بالأسماء الموجودة في مجلدك
-        if os.path.exists('svm_model.zip'):
-            with zipfile.ZipFile('svm_model.zip', 'r') as z:
+        # 1. تحميل موديل SVM (الاسم الجديد: nafas_model.zip)
+        if os.path.exists('nafas_model.zip'):
+            with zipfile.ZipFile('nafas_model.zip', 'r') as z:
                 pkl_files = [n for n in z.namelist() if n.endswith('.pkl')]
                 if pkl_files:
                     with z.open(pkl_files[0]) as f: 
                         svm_model = pickle.load(f)
         
-        if os.path.exists('dataset_original.zip'):
-            with zipfile.ZipFile('dataset_original.zip', 'r') as z:
+        # 2. تحميل البيانات (الاسم الجديد: nafas_data.zip)
+        if os.path.exists('nafas_data.zip'):
+            with zipfile.ZipFile('nafas_data.zip', 'r') as z:
                 pkl_files = [n for n in z.namelist() if n.endswith('.pkl')]
                 if pkl_files:
                     with z.open(pkl_files[0]) as f: 
                         df_data = pd.read_pickle(f)
 
+        # تحميل الملفات الصغيرة
         with open('vectorizer.pkl', 'rb') as f: vec = pickle.load(f)
         with open('label_encoder.pkl', 'rb') as f: enc = pickle.load(f)
         
         if svm_model is None or df_data is None:
-            # رسالة خطأ واضحة في حال الفشل
-            raise Exception("الملفات غير موجودة أو فارغة")
+            raise Exception("لم يتم العثور على ملفات nafas_model.zip أو nafas_data.zip")
 
         return {'model': model, 'svm': svm_model, 'vectorizer': vec, 
                 'encoder': enc, 'data': df_data, 'stem': stem_arabic_word}
     except Exception as e:
-        st.error(f"⚠️ خطأ في تحميل النماذج: {e}")
+        st.error(f"⚠️ خطأ في تحميل الملفات: {e}")
         return None
 
 # ============================================================
@@ -230,13 +210,8 @@ def get_nafsbot_response(models, patient_input, chat_history):
 # ============================================================
 
 def main():
-    # فحص النماذج أولاً
-    models = load_nafsbot_models()
-    if models is None:
-        st.stop() # توقف إذا لم تنجح الملفات في التحميل
-
     if 'db' not in st.session_state: st.session_state.db = init_database()
-    if 'models' not in st.session_state: st.session_state.models = models
+    if 'models' not in st.session_state: st.session_state.models = load_nafsbot_models()
     
     if 'logged_in' not in st.session_state:
         st.session_state.update({'logged_in': False, 'user_id': None, 'username': None, 'current_session_id': None})
