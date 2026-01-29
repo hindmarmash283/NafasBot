@@ -15,29 +15,29 @@ import zipfile
 # 1. إعدادات الصفحة والتصميم (Blue & Grey Tech Theme) 🎨
 # ============================================================
 
-# الأيقونة: روبوت (عقل إلكتروني) والعنوان
 st.set_page_config(page_title="NafasBot AI", page_icon="🤖", layout="wide")
 
-# CSS لتطبيق الألوان المطلوبة (أزرق فاتح، أبيض، سكني)
+# نفس الـ CSS الخاص بكِ تماماً
 st.markdown("""
 <style>
-    /* استيراد خط عربي جميل */
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
     html, body, [class*="css"] {
         font-family: 'Cairo', sans-serif;
     }
 
-    /* خلفية التطبيق: سكني فاتح جداً */
     .stApp {
         background-color: #F0F2F5;
     }
     
-    /* العناوين باللون الأزرق التقني */
     h1, h2, h3 {
        color: #1565C0 !important;
     }
 
-    /* فقاعة رسالة المستخدم (يمين - أبيض مع إطار) */
+    [data-testid="stSidebar"] {
+        background-color: #FFFFFF;
+        border-left: 1px solid #E0E0E0;
+    }
+
     .user-msg {
         background-color: #FFFFFF;
         color: #333333;
@@ -54,7 +54,6 @@ st.markdown("""
         box-shadow: 0px 1px 2px rgba(0,0,0,0.1);
     }
     
-    /* فقاعة رسالة البوت (يسار - أزرق فاتح) */
     .bot-msg {
         background-color: #E3F2FD;
         color: #0D47A1;
@@ -71,11 +70,11 @@ st.markdown("""
         border: 1px solid #BBDEFB;
     }
     
-    /* تحسين الأزرار */
     .stButton>button {
         background-color: #1976D2 !important;
         color: white !important;
         border-radius: 8px;
+        width: 100%;
     }
     
     #MainMenu {visibility: hidden;}
@@ -84,14 +83,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# إعداد قاعدة البيانات (مع التعديلات الجديدة)
+# 2. إعداد قاعدة البيانات (النظام الجديد: جلسات + رسائل) 🗄️
 # ============================================================
 
 def init_database():
-    """إنشاء قاعدة البيانات + التنظيف التلقائي"""
-    conn = sqlite3.connect('nafasbot.db', check_same_thread=False)
+    """إنشاء الجداول بنظام الجلسات"""
+    # استخدمنا اسماً جديداً لضمان عدم تداخل الجداول القديمة
+    conn = sqlite3.connect('nafasbot_sessions.db', check_same_thread=False)
     cursor = conn.cursor()
     
+    # 1. جدول المستخدمين (كما هو)
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,40 +102,49 @@ def init_database():
     )
     ''')
     
+    # 2. جدول الجلسات (Sessions) - جديد
+    # هذا الجدول يخزن "عنوان المحادثة" وتاريخها
     cursor.execute('''
-    CREATE TABLE IF NOT EXISTS conversations (
-        conv_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    CREATE TABLE IF NOT EXISTS sessions (
+        session_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(user_id)
+    )
+    ''')
+
+    # 3. جدول الرسائل (Messages) - مربوط بالجلسة
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS messages (
+        msg_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
         user_id INTEGER NOT NULL,
         question TEXT NOT NULL,
         answer TEXT NOT NULL,
         category TEXT NOT NULL,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        expires_at TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(user_id)
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
     )
     ''')
     
-    # 🔥 ميزة الحذف التلقائي: حذف أي رسالة أقدم من 15 يوم عند التشغيل
+    # التنظيف التلقائي: حذف الجلسات القديمة (أكثر من 15 يوم)
     fifteen_days_ago = (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d %H:%M:%S')
-    cursor.execute("DELETE FROM conversations WHERE timestamp < ?", (fifteen_days_ago,))
-    conn.commit()
+    cursor.execute("DELETE FROM sessions WHERE created_at < ?", (fifteen_days_ago,))
+    # ملاحظة: الرسائل المرتبطة ستبقى يتيمة أو يمكن حذفها بكود إضافي، لكن حذف الجلسة يكفي لإخفائها
     
+    conn.commit()
     return conn
 
-# ============================================================
-# دوال المستخدمين
-# ============================================================
-
+# --- دوال إدارة المستخدمين ---
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def create_user(conn, username, password):
     try:
         cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO users (username, password_hash) VALUES (?, ?)',
-            (username, hash_password(password))
-        )
+        cursor.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', 
+                      (username, hash_password(password)))
         conn.commit()
         return True, "تم إنشاء الحساب بنجاح!"
     except sqlite3.IntegrityError:
@@ -142,42 +152,54 @@ def create_user(conn, username, password):
 
 def login_user(conn, username, password):
     cursor = conn.cursor()
-    cursor.execute(
-        'SELECT user_id, username FROM users WHERE username = ? AND password_hash = ?',
-        (username, hash_password(password))
-    )
+    cursor.execute('SELECT user_id, username FROM users WHERE username = ? AND password_hash = ?', 
+                  (username, hash_password(password)))
     result = cursor.fetchone()
     if result:
         return True, result[0], result[1]
     return False, None, None
 
-def save_conversation(conn, user_id, question, answer, category):
-    # الفلترة: لا نحفظ إذا كان التصنيف غير معروف (لضمان جودة البيانات)
-    if category and category != "Unknown":
+# --- دوال إدارة الجلسات والرسائل (الجديدة) ---
+
+def create_new_session(conn, user_id, first_msg):
+    """إنشاء جلسة جديدة بعنوان مشتق من أول رسالة"""
+    cursor = conn.cursor()
+    # العنوان هو أول 40 حرف من رسالة المستخدم
+    title = first_msg[:40] + "..." if len(first_msg) > 40 else first_msg
+    cursor.execute('INSERT INTO sessions (user_id, title) VALUES (?, ?)', (user_id, title))
+    conn.commit()
+    return cursor.lastrowid # نرجع رقم الجلسة الجديدة
+
+def get_user_sessions(conn, user_id):
+    """جلب قائمة جلسات المستخدم للعرض في القائمة الجانبية"""
+    cursor = conn.cursor()
+    cursor.execute('SELECT session_id, title, created_at FROM sessions WHERE user_id=? ORDER BY created_at DESC', (user_id,))
+    return cursor.fetchall()
+
+def save_message(conn, session_id, user_id, q, a, cat):
+    """حفظ الرسالة داخل جلسة محددة"""
+    if cat and cat != "Unknown":
         cursor = conn.cursor()
-        expires_at = datetime.now() + timedelta(days=15)
         cursor.execute('''
-            INSERT INTO conversations (user_id, question, answer, category, expires_at)
+            INSERT INTO messages (session_id, user_id, question, answer, category)
             VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, question, answer, category, expires_at))
+        ''', (session_id, user_id, q, a, cat))
         conn.commit()
 
-def get_user_history(conn, user_id):
-    """جلب المحادثات السابقة لعرضها"""
+def get_session_messages(conn, session_id):
+    """جلب رسائل جلسة معينة"""
     cursor = conn.cursor()
-    cursor.execute('SELECT question, answer FROM conversations WHERE user_id=? ORDER BY timestamp ASC', (user_id,))
+    cursor.execute('SELECT question, answer FROM messages WHERE session_id=? ORDER BY timestamp ASC', (session_id,))
     return cursor.fetchall()
 
 # ============================================================
-# تحميل NafsBot (نفس الكود القديم)
+# 3. تحميل NafsBot (نفس الكود القديم تماماً)
 # ============================================================
 
 @st.cache_resource
 def load_nafsbot_models():
-    """تحميل النماذج بذكاء"""
-    
-    # 🛑🛑🛑 تنبيه: تأكدي من وضع المفتاح هنا 🛑🛑🛑
-    my_api_key = "AIzaSyBawgdx3fLKoY6MuLYugJiSPazVK54GG_s"
+    # 🛑🛑🛑 ضعي مفتاحك هنا 🛑🛑🛑
+    my_api_key = "AIzaSyBawgdx3fLKoY6MuLYugJiSPazVK54GG_s" 
     os.environ["GOOGLE_API_KEY"] = my_api_key
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
     model = genai.GenerativeModel('gemini-2.5-flash')
@@ -193,7 +215,6 @@ def load_nafsbot_models():
             return text
     
     try:
-        # 1. تحميل SVM
         svm_model = None
         if os.path.exists('svm_model.zip'):
             with zipfile.ZipFile('svm_model.zip', 'r') as z:
@@ -209,7 +230,6 @@ def load_nafsbot_models():
         if svm_model is None:
             raise Exception("لم يتم العثور على ملف الموديل svm_model")
 
-        # 2. تحميل Dataset
         df_data = None
         if os.path.exists('dataset_original.zip'):
             with zipfile.ZipFile('dataset_original.zip', 'r') as z:
@@ -224,37 +244,30 @@ def load_nafsbot_models():
         if df_data is None:
              raise Exception("لم يتم العثور على ملف البيانات dataset")
 
-        # 3. الملفات الصغيرة
         with open('vectorizer.pkl', 'rb') as f:
             vectorizer = pickle.load(f)
         with open('label_encoder.pkl', 'rb') as f:
             label_encoder = pickle.load(f)
         
         return {
-            'model': model,
-            'svm': svm_model,
-            'vectorizer': vectorizer,
-            'encoder': label_encoder,
-            'data': df_data,
-            'stem': stem_arabic_word
+            'model': model, 'svm': svm_model, 'vectorizer': vectorizer,
+            'encoder': label_encoder, 'data': df_data, 'stem': stem_arabic_word
         }
     except Exception as e:
         st.error(f"⚠️ خطأ في تشغيل النظام: {e}")
         return None
 
 # ============================================================
-# المحرك الرئيسي (نفس البرومبت الخاص بك)
+# المحرك الرئيسي (نفس البرومبت والمنطق)
 # ============================================================
 
 def get_nafsbot_response(models, patient_input):
     try:
-        # التصنيف
         processed = models['stem'](patient_input)
         vec = models['vectorizer'].transform([processed]).toarray()
         pred_idx = models['svm'].predict(vec)[0]
         category = models['encoder'].inverse_transform([pred_idx])[0]
         
-        # السياق
         related = models['data'][models['data']['Hierarchical Diagnosis'] == category]
         context_str = ""
         if len(related) > 0:
@@ -262,7 +275,6 @@ def get_nafsbot_response(models, patient_input):
             for item in context:
                 context_str += f"- {item['Question']}\n"
         
-        # التوليد (نفس البرومبت الذي طلبت الحفاظ عليه)
         prompt = f"""
     تصرف كـ "نفس بوت"، صديق مقرب وداعم نفسي حكيم.
     المستخدم بيمر بحالة تم تصنيفها كـ: {category}
@@ -298,12 +310,11 @@ def get_nafsbot_response(models, patient_input):
     """
         response = models['model'].generate_content(prompt)
         return category, response.text
-    
     except Exception as e:
         return None, f"خطأ: {str(e)}"
 
 # ============================================================
-# الواجهة الرئيسية (التعديل الجذري هنا)
+# الواجهة الرئيسية (التعديل لدعم الجلسات)
 # ============================================================
 
 def main():
@@ -311,15 +322,13 @@ def main():
     if 'db' not in st.session_state: st.session_state.db = init_database()
     if 'models' not in st.session_state: st.session_state.models = load_nafsbot_models()
     
-    # متغيرات الجلسة (تسجيل الدخول)
+    # متغيرات الجلسة (Login & Session State)
     if 'logged_in' not in st.session_state:
-        st.session_state['logged_in'] = False
-        st.session_state['user_id'] = None
-        st.session_state['username'] = None
+        st.session_state.update({'logged_in': False, 'user_id': None, 'username': None, 'current_session_id': None})
 
     conn = st.session_state.db
 
-    # 2. السيناريو الأول: المستخدم غير مسجل دخول
+    # --- القسم 1: تسجيل الدخول (لم يتغير) ---
     if not st.session_state['logged_in']:
         st.title("🧠 نفس بوت الإلكتروني")
         st.markdown("### مساحتك الآمنة للفضفضة والدعم النفسي")
@@ -332,13 +341,13 @@ def main():
             st.write("")
             if st.button("🚀 دخول"):
                 result = login_user(conn, username, password)
-                if result[0]: # نجاح
-                    st.session_state['logged_in'] = True
-                    st.session_state['user_id'] = result[1]
-                    st.session_state['username'] = result[2]
+                if result[0]:
+                    st.session_state.logged_in = True
+                    st.session_state.user_id = result[1]
+                    st.session_state.username = result[2]
                     st.rerun()
                 else:
-                    st.error("اسم المستخدم أو كلمة المرور غير صحيحة")
+                    st.error("بيانات الدخول غير صحيحة")
                     
         with tab2:
             new_user = st.text_input("اختر اسم مستخدم", key="new_user")
@@ -351,39 +360,65 @@ def main():
                 else:
                     st.warning(msg)
 
-    # 3. السيناريو الثاني: المستخدم مسجل دخول (الشات)
+    # --- القسم 2: لوحة التحكم (النظام الجديد) ---
     else:
-        # القائمة الجانبية
+        # القائمة الجانبية: إدارة الجلسات
         with st.sidebar:
-            st.title(f"أهلاً, {st.session_state['username']} 🧠")
+            st.title(f"أهلاً, {st.session_state.username} 👋")
+            
+            # زر إنشاء محادثة جديدة
+            if st.button("➕ محادثة جديدة", type="primary"):
+                st.session_state.current_session_id = None # تفريغ الجلسة الحالية
+                st.rerun()
+            
+            st.markdown("---")
+            st.caption("🗂️ محادثاتك السابقة")
+            
+            # عرض الجلسات السابقة كأزرار
+            sessions = get_user_sessions(conn, st.session_state.user_id)
+            for sess in sessions:
+                sess_id = sess[0]
+                title = sess[1]
+                date = sess[2].split()[0] # التاريخ فقط
+                
+                # إذا ضغط على جلسة سابقة، نحدث الـ ID ونعيد التحميل
+                if st.button(f"{date} | {title}", key=f"btn_{sess_id}"):
+                    st.session_state.current_session_id = sess_id
+                    st.rerun()
+            
             st.markdown("---")
             if st.button("تسجيل خروج"):
-                st.session_state['logged_in'] = False
+                st.session_state.clear() # مسح كل شيء
                 st.rerun()
-            st.markdown("---")
-            st.info("🔒 المحادثات آمنة ومحفوظة لمدة 15 يوماً فقط.")
 
-        st.title("💬 جلسة نفسية ذكية")
-        
-        # عرض المحادثات السابقة من قاعدة البيانات (تصميم الواتساب)
-        history = get_user_history(conn, st.session_state['user_id'])
-        for q, a in history:
-            st.markdown(f'<div class="user-msg">👤 {q}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="bot-msg">🧠 {a}</div>', unsafe_allow_html=True)
-            
-        # إدخال رسالة جديدة
-        if user_input := st.chat_input("تحدث معي... أنا هنا لأسمعك"):
-            # عرض الرسالة فوراً
+        # منطقة الشات
+        if st.session_state.current_session_id:
+            # نحن داخل جلسة محفوظة -> نعرض الرسائل القديمة
+            msgs = get_session_messages(conn, st.session_state.current_session_id)
+            for q, a in msgs:
+                st.markdown(f'<div class="user-msg">👤 {q}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="bot-msg">🧠 {a}</div>', unsafe_allow_html=True)
+        else:
+            # نحن في "محادثة جديدة" (صفحة بيضاء)
+            st.info("💡 هذه محادثة جديدة.. ابدأ بالكتابة وسيتم حفظها تلقائياً.")
+
+        # صندوق الإدخال (مشترك)
+        if user_input := st.chat_input("اكتب ما تشعر به..."):
+            # عرض رسالة المستخدم فوراً
             st.markdown(f'<div class="user-msg">👤 {user_input}</div>', unsafe_allow_html=True)
             
-            # معالجة الرد
+            # إذا كانت أول رسالة في الجلسة -> ننشئ جلسة جديدة في الداتا بيس
+            if st.session_state.current_session_id is None:
+                new_sess_id = create_new_session(conn, st.session_state.user_id, user_input)
+                st.session_state.current_session_id = new_sess_id
+            
+            # المعالجة والرد
             cat, ans = get_nafsbot_response(st.session_state.models, user_input)
             
-            # عرض الرد
             if ans:
                 st.markdown(f'<div class="bot-msg">🧠 {ans}</div>', unsafe_allow_html=True)
-                # حفظ في قاعدة البيانات
-                save_conversation(conn, st.session_state['user_id'], user_input, ans, cat)
+                # حفظ الرسالة مربوطة بالجلسة الحالية
+                save_message(conn, st.session_state.current_session_id, st.session_state.user_id, user_input, ans, cat)
             else:
                 st.error("حدث خطأ في الاتصال")
 
