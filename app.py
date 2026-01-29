@@ -420,3 +420,5 @@ def main():
                 save_message(conn, st.session_state.current_session_id, st.session_state.user_id, user_input, ans, cat)
             else:
                 st.error("خطأ في الاتصال")
+if __name__ == "__main__":
+    main()
