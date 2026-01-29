@@ -39,6 +39,21 @@ def main():
 
     conn = st.session_state.db
 
+    if 'auto_train_check' not in st.session_state:
+        try:
+            # نتحقق هل يوجد بيانات جديدة؟
+            new_df = db.get_new_training_data(conn)
+            # الشرط: إذا كان هناك أكثر من 5 محادثات جديدة، ابدأ التدريب
+            if len(new_df) > 5: 
+                success, msg = ai.retrain_model('nafas_data.zip', new_df)
+                if success:
+                    print("✅ Auto-Training Successful!") # يظهر في الكونسول للمطور فقط
+                    st.session_state.models = ai.load_nafsbot_models() # تحديث الموديل في الذاكرة
+        except Exception as e:
+            print(f"⚠️ Auto-Training Skipped: {e}")
+        
+        st.session_state.auto_train_check = True
+
     # --- تسجيل الدخول ---
     if not st.session_state['logged_in']:
         st.title("🧠 نفس بوت الإلكتروني")
@@ -110,22 +125,6 @@ def main():
                         st.session_state.current_session_id = None
                         st.rerun()
 
-            # 4. 🔥 لوحة التحكم (إعادة التدريب)
-            with st.expander("🛠️ لوحة المطور (التدريب)"):
-                if st.button("🔄 دمج البيانات وتحديث الموديل"):
-                    with st.spinner("جاري سحب البيانات الجديدة والتدريب..."):
-                        # سحب الداتا الجديدة
-                        new_df = db.get_new_training_data(conn)
-                        if len(new_df) > 0:
-                            # التدريب
-                            success, msg = ai.retrain_model('dataset_original.zip', new_df)
-                            if success:
-                                st.success(msg)
-                                st.cache_resource.clear() # تفريغ الذاكرة لتحميل الموديل الجديد
-                            else:
-                                st.error(msg)
-                        else:
-                            st.info("لا توجد بيانات جديدة (من الأسبوع الماضي) للتدريب.")
         # 5. تسجيل الخروج
             st.markdown("---")
             if st.button("تسجيل خروج"):

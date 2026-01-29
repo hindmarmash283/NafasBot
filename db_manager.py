@@ -73,13 +73,12 @@ def rename_session(conn, session_id, new_title):
     conn.commit()
 
 def save_message(conn, session_id, user_id, question, answer, category):
-    if category and category != "Unknown":
-        cursor = conn.cursor()
-        cursor.execute('''
+    if not category: category = "General"
+    conn.execute('''
             INSERT INTO messages (session_id, user_id, question, answer, category) 
             VALUES (?, ?, ?, ?, ?)
         ''', (session_id, user_id, question, answer, category))
-        conn.commit()
+    conn.commit()
 
 def get_session_messages(conn, session_id):
     cursor = conn.cursor()

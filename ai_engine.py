@@ -14,9 +14,9 @@ from sklearn.svm import SVC
 @st.cache_resource
 def load_nafsbot_models():
     # 🛑 مفتاح API
-    os.environ["GOOGLE_API_KEY"] = "AIzaSyCK1kMchDgsxFPDHU3t2hXhn-h6sDOnHho"
+    os.environ["GOOGLE_API_KEY"] = "AIzaSyBZoUp0GODMNe6tCmdwOEAF7GBjc2Pmsdw"
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-    model = genai.GenerativeModel('gemini-3-flash')
+    model = genai.GenerativeModel('gemini-2.0-flash')
     
     stemmer = ISRIStemmer()
 
