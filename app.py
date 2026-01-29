@@ -12,7 +12,7 @@ from nltk.stem.isri import ISRIStemmer
 import zipfile
 
 # ============================================================
-# 1. إعدادات الصفحة والتصميم
+# 1. إعدادات الصفحة
 # ============================================================
 
 st.set_page_config(page_title="NafasBot AI", page_icon="🤖", layout="wide")
@@ -121,14 +121,13 @@ def rename_session(conn, session_id, new_title):
     conn.commit()
 
 # ============================================================
-# 3. تحميل NafsBot (تم تحديث الأسماء الجديدة هنا) ✅
+# 3. تحميل NafsBot (تم ضبط الأسماء حسب الصورة) ✅
 # ============================================================
 
 @st.cache_resource
 def load_nafsbot_models():
-    # 🛑 تأكدي من وضع مفتاحك هنا
-    my_api_key = "AIzaSyCK1kMchDgsxFPDHU3t2hXhn-h6sDOnHho"
-    os.environ["GOOGLE_API_KEY"] = my_api_key
+    # 🛑 مفتاح API
+    os.environ["GOOGLE_API_KEY"] = "AIzaSyCK1kMchDgsxFPDHU3t2hXhn-h6sDOnHho"
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
     model = genai.GenerativeModel('gemini-2.5-flash')
     
@@ -142,18 +141,18 @@ def load_nafsbot_models():
     try:
         svm_model, df_data = None, None
         
-        # 1. تحميل موديل SVM (الاسم الجديد: nafas_model.zip) 🔥
-        if os.path.exists('nafas_model.zip'):
-            with zipfile.ZipFile('nafas_model.zip', 'r') as z:
+        # 1. تحميل موديل SVM (حسب اسم الملف في مجلدك)
+        if os.path.exists('svm_model.zip'):
+            with zipfile.ZipFile('svm_model.zip', 'r') as z:
                 # نبحث عن أي ملف .pkl داخل الـ zip
                 pkl_files = [n for n in z.namelist() if n.endswith('.pkl')]
                 if pkl_files:
                     with z.open(pkl_files[0]) as f: 
                         svm_model = pickle.load(f)
         
-        # 2. تحميل البيانات (الاسم الجديد: nafas_data.zip) 🔥
-        if os.path.exists('nafas_data.zip'):
-            with zipfile.ZipFile('nafas_data.zip', 'r') as z:
+        # 2. تحميل البيانات (حسب اسم الملف في مجلدك)
+        if os.path.exists('dataset_original.zip'):
+            with zipfile.ZipFile('dataset_original.zip', 'r') as z:
                 pkl_files = [n for n in z.namelist() if n.endswith('.pkl')]
                 if pkl_files:
                     with z.open(pkl_files[0]) as f: 
@@ -165,7 +164,7 @@ def load_nafsbot_models():
         
         # التأكد من التحميل
         if svm_model is None or df_data is None:
-            raise Exception("لم يتم العثور على ملفات النماذج (تأكدي من وجود nafas_model.zip و nafas_data.zip)")
+            raise Exception("لم يتم العثور على ملفات النماذج (svm_model.zip أو dataset_original.zip)")
 
         return {'model': model, 'svm': svm_model, 'vectorizer': vec, 
                 'encoder': enc, 'data': df_data, 'stem': stem_arabic_word}
