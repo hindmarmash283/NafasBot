@@ -18,7 +18,7 @@ from sklearn.svm import SVC
 # 2. قسم قاعدة البيانات (Database Manager)
 # ==========================================
 def init_database():
-    conn = sqlite3.connect('nafasbot.db', check_same_thread=False)
+    conn = sqlite3.connect('nafas_internal.db', check_same_thread=False)
     cursor = conn.cursor()
     
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -131,35 +131,34 @@ def stem_arabic_word(text):
 def load_nafsbot_models():
     os.environ["GOOGLE_API_KEY"] = "AIzaSyBZoUp0GODMNe6tCmdwOEAF7GBjc2Pmsdw" 
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     try:
         svm_model, df_data = None, None
-        if os.path.exists('svm_model.zip'):
-            with zipfile.ZipFile('svm_model.zip', 'r') as z:
+        m_zip = 'nafas_model.zip' if os.path.exists('nafas_model.zip') else 'svm_model.zip'
+        d_zip = 'nafas_data.zip' if os.path.exists('nafas_data.zip') else 'dataset_original.zip'
+
+        if os.path.exists(m_zip):
+            with zipfile.ZipFile(m_zip, 'r') as z:
                 pkl_files = [n for n in z.namelist() if n.endswith('.pkl')]
                 if pkl_files:
                     with z.open(pkl_files[0]) as f: svm_model = pickle.load(f)
-        elif os.path.exists('svm_model.pkl'):
-            with open('svm_model.pkl', 'rb') as f: svm_model = pickle.load(f)
-
-        if os.path.exists('dataset_original.zip'):
-            with zipfile.ZipFile('dataset_original.zip', 'r') as z:
+        
+        if os.path.exists(d_zip):
+            with zipfile.ZipFile(d_zip, 'r') as z:
                 pkl_files = [n for n in z.namelist() if n.endswith('.pkl')]
                 if pkl_files:
                     with z.open(pkl_files[0]) as f: df_data = pd.read_pickle(f)
-        elif os.path.exists('dataset_original.pkl'):
-            df_data = pd.read_pickle('dataset_original.pkl')
 
-        if os.path.exists('vectorizer.pkl'):
-            with open('vectorizer.pkl', 'rb') as f: vec = pickle.load(f)
-        if os.path.exists('label_encoder.pkl'):
-            with open('label_encoder.pkl', 'rb') as f: enc = pickle.load(f)
+        with open('vectorizer.pkl', 'rb') as f: vec = pickle.load(f)
+        with open('label_encoder.pkl', 'rb') as f: enc = pickle.load(f)
         
         if svm_model is None or df_data is None: return None
         return {'model': model, 'svm': svm_model, 'vectorizer': vec, 
                 'encoder': enc, 'data': df_data, 'stem': stem_arabic_word}
-    except: return None
+    except Exception as e:
+        st.error(f"خطأ في تحميل الملفات: {e}") # التصحيح: إضافة رسالة خطأ واضحة لكِ في الشاشة
+        return None
 
 def get_nafsbot_response(models, patient_input, chat_history):
     try:
