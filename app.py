@@ -221,28 +221,28 @@ def load_nafsbot_models():
         except: return text
     
     try:
-        svm_model, df_data = None, None
+        nafas_model, df_data = None, None
         
         # Load SVM
-        if os.path.exists('svm_model.zip'):
-            with zipfile.ZipFile('svm_model.zip', 'r') as z:
+        if os.path.exists('nafas_model.zip'):
+            with zipfile.ZipFile('nafas_model.zip', 'r') as z:
                 with z.open([n for n in z.namelist() if n.endswith('.pkl')][0]) as f: 
-                    svm_model = pickle.load(f)
-        elif os.path.exists('svm_model.pkl'):
-            with open('svm_model.pkl', 'rb') as f: svm_model = pickle.load(f)
+                    nafas_model = pickle.load(f)
+        elif os.path.exists('nafas_model.pkl'):
+            with open('nafas_model.pkl', 'rb') as f: nafas_model = pickle.load(f)
 
         # Load Dataset
-        if os.path.exists('dataset_original.zip'):
-            with zipfile.ZipFile('dataset_original.zip', 'r') as z:
+        if os.path.exists('nafas_data.zip'):
+            with zipfile.ZipFile('nafas_data.zip', 'r') as z:
                 with z.open([n for n in z.namelist() if n.endswith('.pkl')][0]) as f: 
                     df_data = pd.read_pickle(f)
-        elif os.path.exists('dataset_original.pkl'):
-            df_data = pd.read_pickle('dataset_original.pkl')
+        elif os.path.exists('nafas_data.pkl'):
+            df_data = pd.read_pickle('nafas_data.pkl')
 
         with open('vectorizer.pkl', 'rb') as f: vec = pickle.load(f)
         with open('label_encoder.pkl', 'rb') as f: enc = pickle.load(f)
         
-        return {'model': model, 'svm': svm_model, 'vectorizer': vec, 
+        return {'model': model, 'svm': nafas_model, 'vectorizer': vec, 
                 'encoder': enc, 'data': df_data, 'stem': stem_arabic_word}
     except Exception as e:
         st.error(f"⚠️ خطأ: {e}")
