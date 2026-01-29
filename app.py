@@ -90,39 +90,60 @@ def save_conversation(conn, user_id, question, answer, category):
 
 @st.cache_resource
 def load_nafsbot_models():
-    """تحميل النماذج"""
+    """تحميل النماذج بذكاء"""
     
-    # مفتاح Gemini
-    my_api_key = "AIzaSyBUbM_cKLyxHJfb_Ay8EGUc6FZ9PZuHS4I"  # 🛑 تأكدي من مفتاحك
+    # إعداد Gemini
+    # 🛑 تأكدي أن مفتاحك موجود هنا
+    my_api_key = "AIzaSyCgc326bDm51rHLS6CSDCLfzoQ1Y6Yg0b4"
     os.environ["GOOGLE_API_KEY"] = my_api_key
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-    model = genai.GenerativeModel('ggemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     stemmer = ISRIStemmer()
     
     def stem_arabic_word(text):
-        text = araby.strip_tashkeel(text)
-        words = text.split()
-        return " ".join([stemmer.stem(word) for word in words])
+        try:
+            text = araby.strip_tashkeel(text)
+            words = text.split()
+            return " ".join([stemmer.stem(word) for word in words])
+        except:
+            return text
     
     try:
-        # 1. تحميل SVM (يفك الضغط تلقائياً)
+        # 1. تحميل SVM (البحث عن ملف pkl داخل الـ zip)
+        svm_model = None
         if os.path.exists('svm_model.zip'):
             with zipfile.ZipFile('svm_model.zip', 'r') as z:
-                with z.open(z.namelist()[0]) as f:
-                    svm_model = pickle.load(f)
-        else:
-            # احتياطي لو الملف مش مضغوط
+                # نبحث عن الملف الذي ينتهي بـ .pkl
+                pkl_files = [f for f in z.namelist() if f.endswith('.pkl')]
+                if pkl_files:
+                    with z.open(pkl_files[0]) as f:
+                        svm_model = pickle.load(f)
+        
+        # محاولة احتياطية (لو الملف مش مضغوط)
+        if svm_model is None and os.path.exists('svm_model.pkl'):
             with open('svm_model.pkl', 'rb') as f:
                 svm_model = pickle.load(f)
 
-        # 2. تحميل Dataset (يفك الضغط تلقائياً)
+        if svm_model is None:
+            raise Exception("لم يتم العثور على ملف الموديل svm_model")
+
+        # 2. تحميل Dataset
+        df_data = None
         if os.path.exists('dataset_original.zip'):
-            df_data = pd.read_pickle('dataset_original.zip')
-        else:
+            with zipfile.ZipFile('dataset_original.zip', 'r') as z:
+                pkl_files = [f for f in z.namelist() if f.endswith('.pkl')]
+                if pkl_files:
+                    with z.open(pkl_files[0]) as f:
+                        df_data = pd.read_pickle(f)
+        
+        if df_data is None and os.path.exists('dataset_original.pkl'):
             df_data = pd.read_pickle('dataset_original.pkl')
 
-        # 3. الملفات الصغيرة (كما هي)
+        if df_data is None:
+             raise Exception("لم يتم العثور على ملف البيانات dataset")
+
+        # 3. الملفات الصغيرة
         with open('vectorizer.pkl', 'rb') as f:
             vectorizer = pickle.load(f)
         with open('label_encoder.pkl', 'rb') as f:
@@ -137,7 +158,7 @@ def load_nafsbot_models():
             'stem': stem_arabic_word
         }
     except Exception as e:
-        st.error(f"خطأ في تحميل الملفات: {e}")
+        st.error(f"⚠️ خطأ في تشغيل النظام: {e}")
         return None
 
 # ============================================================
